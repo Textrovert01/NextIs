@@ -54,6 +54,9 @@ struct ContentView: View {
     // Which place the user tapped
     @State private var selectedPlace: Place? = nil
     @State private var navigateToPlace: Bool = false
+    // Alert when trying to switch rooms while a session is active
+    @State private var showActiveRoomAlert: Bool = false
+    @State private var activeRoomNameForAlert: String = ""
 
     // Show the Kids screen
     // @State private var showKidsManager: Bool = false
@@ -102,8 +105,25 @@ struct ContentView: View {
                     LazyVGrid(columns: columns, alignment: .center, spacing: 12) {
                         ForEach(places) { place in
                             Button {
-                                self.selectedPlace = place
-                                self.navigateToPlace = true
+                                let dc = DataController.shared
+                                guard let kidID = dc.activeKidID else { return }
+
+                                if let currentRoom = dc.currentRoomName(for: kidID) {
+                                    if currentRoom == place.name {
+                                        // Already in this room: just navigate without restarting timer
+                                        self.selectedPlace = place
+                                        self.navigateToPlace = true
+                                    } else {
+                                        // Block switching rooms; show alert
+                                        self.activeRoomNameForAlert = currentRoom
+                                        self.showActiveRoomAlert = true
+                                    }
+                                } else {
+                                    // No active session for this kid: start and navigate
+                                    dc.startRoomVisit(placeName: place.name)
+                                    self.selectedPlace = place
+                                    self.navigateToPlace = true
+                                }
                             } label: {
                                 VStack(spacing: 8) {
                                     Image(place.imageName)
@@ -121,6 +141,20 @@ struct ContentView: View {
                                 .padding(8)
                             }
                             .buttonStyle(.plain)
+                            .disabled({
+                                let dc = DataController.shared
+                                if let kidID = dc.activeKidID, let currentRoom = dc.currentRoomName(for: kidID) {
+                                    return currentRoom != place.name
+                                }
+                                return false
+                            }())
+                            .opacity({
+                                let dc = DataController.shared
+                                if let kidID = dc.activeKidID, let currentRoom = dc.currentRoomName(for: kidID) {
+                                    return currentRoom == place.name ? 1.0 : 0.4
+                                }
+                                return 1.0
+                            }())
                         }
                     }
                     .padding(.horizontal)
@@ -137,6 +171,11 @@ struct ContentView: View {
             }
                 .navigationTitle(activeKidName)
                 .navigationBarTitleDisplayMode(.inline)
+                .alert("Finish current room first", isPresented: $showActiveRoomAlert) {
+                    Button("OK", role: .cancel) { }
+                } message: {
+                    Text("You're currently in \(activeRoomNameForAlert). Drop the icon on All Done to finish before switching rooms.")
+                }
             }
         }
         .onAppear {
@@ -178,9 +217,13 @@ struct ContentView: View {
         @State private var isOverDrop: Bool = false
         @State private var iconScale: CGFloat = 1.0
         @State private var dropConfirmed: Bool = false
-
+        // Live timer state
+        @State private var elapsedSeconds: Int = 0
+        private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
         // A named coordinate space to compare frames
         private let spaceName = "roomSheetSpace"
+        // Observe central data controller so pause/play button updates live
+        @ObservedObject private var data = DataController.shared
 
         // Computed property to resolve the active kid name from DataController
         private var activeKidName: String {
@@ -195,16 +238,51 @@ struct ContentView: View {
             }
             return "Kids"
         }
-
+        // Format seconds as H:MM:SS or MM:SS
+        private func format(_ seconds: Int) -> String {
+            let hrs = seconds / 3600
+            let mins = (seconds % 3600) / 60
+            let secs = seconds % 60
+            if hrs > 0 {
+                return String(format: "%d:%02d:%02d", hrs, mins, secs)
+            } else {
+                return String(format: "%02d:%02d", mins, secs)
+            }
+        }
         var body: some View {
             ZStack {
                 PlayfulBackground()
                 VStack(spacing: 24) {
                     VStack(spacing: 16) {
-                        // Place name centered above the icon
-                        Text(place.name)
-                            .font(.system(size: 34, weight: .bold))
-                            .multilineTextAlignment(.center)
+                        HStack(alignment: .firstTextBaseline, spacing: 12) {
+                            // Timer control toggle button (hidden once dropped)
+                            if !dropConfirmed {
+                                HStack(spacing: 10) {
+                                    Button(action: {
+                                        if data.isPaused {
+                                            DataController.shared.resumeRoomVisit()
+                                        } else {
+                                            DataController.shared.pauseRoomVisit()
+                                        }
+                                    }) {
+                                        Image(systemName: data.isPaused ? "play.fill" : "pause.fill")
+                                            .imageScale(.large)
+                                            .padding(6)
+                                            .background(Color.primary.opacity(0.1))
+                                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                                    }
+                                }
+                            }
+
+                            Text(place.name)
+                                .font(.system(size: 34, weight: .bold))
+                                .multilineTextAlignment(.center)
+                               
+                            Text(format(elapsedSeconds))
+                                .font(.system(size: 22, weight: .semibold))
+                                .foregroundColor(.secondary)
+                                .accessibilityLabel("Elapsed time")
+                        }
 
                         // Draggable place icon
                         ZStack {
@@ -299,9 +377,8 @@ struct ContentView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button(action: { dismiss() }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "chevron.backward")
-                            Text("Back")
+                        HStack(spacing: 0) {
+                            Text(" < Back")
                         }
                     }
                 }
@@ -311,8 +388,14 @@ struct ContentView: View {
                 }
             }
             .onAppear {
+                // Timer already started on tap in the previous screen
                 dropConfirmed = false
-                DataController.shared.startRoomVisit(placeName: place.name)
+                elapsedSeconds = DataController.shared.currentElapsedSeconds()
+            }
+            .onReceive(ticker) { _ in
+                // Freeze the timer after a successful drop
+                guard !dropConfirmed else { return }
+                elapsedSeconds = DataController.shared.currentElapsedSeconds()
             }
         }
 
@@ -321,6 +404,8 @@ struct ContentView: View {
         // Check if the icon was dropped on All Done and run animations accordingly
         private func handleDropAttempt() {
             if isOverDrop {
+                // Capture final time before ending visit so UI can display the frozen total
+                elapsedSeconds = DataController.shared.currentElapsedSeconds()
                 DataController.shared.endRoomVisit()
                 dropConfirmed = true
                 // Hide the icon, animate AllDone zoom, then reveal Next Is
@@ -575,12 +660,24 @@ struct KidsManagerView: View {
     @State private var kidBeingRenamed: Kid? = nil
     @State private var renameText: String = ""
     @State private var showAddPrompt: Bool = false
+    @Environment(\.dismiss) private var dismiss
     
     private var activeKidName: String {
         if let id = UUID(uuidString: currentKidID), let kid = store.kids.first(where: { $0.id == id }) {
             return kid.name
         }
         return "None"
+    }
+
+    private func format(_ seconds: Int) -> String {
+        let hrs = seconds / 3600
+        let mins = (seconds % 3600) / 60
+        let secs = seconds % 60
+        if hrs > 0 {
+            return String(format: "%d:%02d:%02d", hrs, mins, secs)
+        } else {
+            return String(format: "%02d:%02d", mins, secs)
+        }
     }
     
     var body: some View {
@@ -605,7 +702,7 @@ struct KidsManagerView: View {
                     .padding(.horizontal)
                     .padding(.top, 6)
                 }
-
+Spacer()
                 // Empty state message
                 if store.kids.isEmpty {
                     VStack(spacing: 8) {
@@ -615,21 +712,13 @@ struct KidsManagerView: View {
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                         
-                        Button {
-                            showAddPrompt = true
-                        } label: {
-                            Image(systemName: "plus")
-                        }
-                        .accessibilityLabel("Add Kid")
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
                 }
 
                 // Kids list (only show when there are kids)
                 if !store.kids.isEmpty {
                     List {
-                        Section(footer: Text("Tap a kid to view their profile and see places visited.").font(.footnote)) {
+                        Section(footer: Text("Tap a kid to view places visited.").font(.footnote)) {
                             ForEach(store.kids) { kid in
                                 NavigationLink(destination: KidProfileView(kid: kid)) {
                                     HStack {
@@ -645,13 +734,19 @@ struct KidsManagerView: View {
                                         }
                                         Text(kid.name)
                                             .frame(maxWidth: .infinity, alignment: .leading)
-                                        if currentKidID == kid.id.uuidString {
-                                            Text("Active")
-                                                .font(.subheadline)
-                                                .padding(.horizontal, 10)
-                                                .padding(.vertical, 6)
-                                                .background(Color.green.opacity(0.15))
-                                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                        if let room = DataController.shared.currentRoomName(for: kid.id.uuidString) {
+                                            TimelineView(.periodic(from: .now, by: 1)) { _ in
+                                                let secs = DataController.shared.currentElapsedSeconds(for: kid.id.uuidString)
+                                                HStack(spacing: 6) {
+                                                    Image(systemName: "clock")
+                                                        .imageScale(.small)
+                                                    Text("\(room) · \(format(secs))")
+                                                        .font(.subheadline)
+                                                        .foregroundColor(.secondary)
+                                                        .lineLimit(1)
+                                                }
+                                                .accessibilityLabel("\(room), elapsed \(format(secs))")
+                                            }
                                         }
                                     }
                                 }
@@ -684,12 +779,41 @@ struct KidsManagerView: View {
                     .background(Color.clear)
                     .listStyle(.insetGrouped)
                 }
+                    Spacer()
+                    HStack(spacing: 10) {
+                        TextField("Add kid name", text: $newKidName)
+                            .textFieldStyle(.roundedBorder)
+                            .submitLabel(.done)
+                            .onSubmit { addKid() }
+                        Button {
+                            addKid()
+                        } label: {
+                            Image(systemName: "plus.circle.fill")
+                                .imageScale(.large)
+                        }
+                  
+                        .accessibilityLabel("Add kid")
+                    }
+                    .padding(.horizontal)
+                    .padding(.vertical, 10)
+                    .background(.ultraThinMaterial)
             }
                 .navigationTitle("Kids")
                 .alert("Add Kid", isPresented: $showAddPrompt) {
                     TextField("Name", text: $newKidName)
                     Button("Cancel", role: .cancel) { }
                     Button("Add") { addKid() }
+                }
+            }
+        }
+        // No longer need timer for live row updates thanks to TimelineView
+        .navigationBarBackButtonHidden(true)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button(action: { dismiss() }) {
+                    HStack(spacing: 0) {
+                        Text(" < Back")
+                    }
                 }
             }
         }
@@ -749,15 +873,14 @@ struct KidProfileView: View {
     }
 
     var body: some View {
-        NavigationView {
-            ZStack {
-                PlayfulBackground()
-                Group {
+        ZStack {
+            PlayfulBackground()
+            Group {
                 if todaysVisits.isEmpty {
                     VStack(spacing: 12) {
                         Text("No visits yet today")
                             .font(.headline)
-                        Text("When a room session ends (Next Is), it will show up here.")
+                        Text("When a room session ends, it will show up here.")
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                     }
@@ -795,22 +918,17 @@ struct KidProfileView: View {
                     .listStyle(.insetGrouped)
                 }
             }
-            .navigationTitle(kid.name)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        DataController.shared.activateKid(kid)
-                        currentKidID = kid.id.uuidString
-                    } label: {
-                        if currentKidID == kid.id.uuidString {
-                            Label("Active", systemImage: "checkmark.seal.fill")
-                        } else {
-                            Label("Activate", systemImage: "checkmark.seal")
-                        }
+        }
+        .navigationTitle(kid.name)
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button(action: { dismiss() }) {
+                    HStack(spacing: 0) {
+                        Text(" < Back")
                     }
                 }
-            }
-                .background(Color.clear)
             }
         }
     }
@@ -832,10 +950,20 @@ final class DataController: ObservableObject {
     private let kidsKey = "Kids_v1"
     private let activeKidKey = "active_kid_id"
     private let visitsKey = "visits_by_kid"
-    
-    // New: Track active room and start time
-    private var activeRoomStartTime: Date?
-    private var activeRoomName: String?
+
+    // Per-kid active session model
+    private struct Session {
+        var roomName: String
+        var startTime: Date?        // non-nil when running
+        var accumulated: TimeInterval // seconds accumulated while paused/stopped
+        var isPaused: Bool
+    }
+
+    // kidID -> Session
+    private var sessions: [String: Session] = [:]
+
+    // Published view of the **current** kid's pause state for UI bindings
+    @Published private(set) var isPaused: Bool = false
     
     private init() {
         loadKids()
@@ -890,40 +1018,75 @@ final class DataController: ObservableObject {
     
     // MARK: - Visit Logging
     func startRoomVisit(placeName: String) {
-        activeRoomName = placeName
-        activeRoomStartTime = Date()
-    }
-    
-    func endRoomVisit() {
-        guard let start = activeRoomStartTime,
-              let room = activeRoomName,
-              let kidID = activeKidID else {
-            activeRoomName = nil
-            activeRoomStartTime = nil
+        guard let kidID = activeKidID else { return }
+        if let sess = sessions[kidID], (sess.startTime != nil || sess.accumulated > 0) {
+            // Session already exists (running or paused) — do not restart
             return
         }
-        
-        let duration = Date().timeIntervalSince(start)
+        sessions[kidID] = Session(roomName: placeName, startTime: Date(), accumulated: 0, isPaused: false)
+        syncPublishedPauseState()
+    }
+
+    /// Pause the current room timer for the active kid.
+    func pauseRoomVisit() {
+        guard let kidID = activeKidID, var sess = sessions[kidID], !sess.isPaused, let start = sess.startTime else { return }
+        sess.accumulated += Date().timeIntervalSince(start)
+        sess.startTime = nil
+        sess.isPaused = true
+        sessions[kidID] = sess
+        syncPublishedPauseState()
+    }
+
+    /// Resume a paused room timer for the active kid.
+    func resumeRoomVisit() {
+        guard let kidID = activeKidID, var sess = sessions[kidID], sess.isPaused else { return }
+        sess.startTime = Date()
+        sess.isPaused = false
+        sessions[kidID] = sess
+        syncPublishedPauseState()
+    }
+
+    /// Cancel the current room timing without saving (rarely used now).
+    func cancelRoomVisit() {
+        guard let kidID = activeKidID else { return }
+        sessions.removeValue(forKey: kidID)
+        syncPublishedPauseState()
+    }
+
+    func endRoomVisit() {
+        guard let kidID = activeKidID, var sess = sessions[kidID] else {
+            syncPublishedPauseState(); return
+        }
+        let duration: TimeInterval
+        if sess.isPaused {
+            duration = sess.accumulated
+        } else if let start = sess.startTime {
+            duration = sess.accumulated + Date().timeIntervalSince(start)
+        } else {
+            duration = sess.accumulated
+        }
+
+        // Save visit
         var visitsByKid = loadVisits()
         var visitsForKid = visitsByKid[kidID] ?? [:]
         let todayKey = todayDateKey()
         var placeData = visitsForKid[todayKey] ?? [:]
-        var visit = placeData[room] ?? VisitData(count: 0, totalTime: 0)
+        var visit = placeData[sess.roomName] ?? VisitData(count: 0, totalTime: 0)
         visit.count += 1
         visit.totalTime += duration
-        placeData[room] = visit
+        placeData[sess.roomName] = visit
         visitsForKid[todayKey] = placeData
         visitsByKid[kidID] = visitsForKid
         saveVisits(visitsByKid)
-        
-        activeRoomName = nil
-        activeRoomStartTime = nil
+
+        // Clear session for this kid
+        sessions.removeValue(forKey: kidID)
+        syncPublishedPauseState()
     }
 
     /// Return the current room name for the given kid if they are the active kid and currently in a room.
     func currentRoomName(for kidID: String) -> String? {
-        guard kidID == activeKidID else { return nil }
-        return activeRoomName
+        return sessions[kidID]?.roomName
     }
     
     func todaysVisits(for kidID: String) -> [String: VisitData] {
@@ -952,7 +1115,31 @@ final class DataController: ObservableObject {
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter.string(from: Date())
     }
-    
+    /// Returns the current elapsed seconds for the active room timer, or 0 if none.
+    func currentElapsedSeconds() -> Int {
+        guard let kidID = activeKidID, let sess = sessions[kidID] else { return 0 }
+        if sess.isPaused { return max(0, Int(sess.accumulated)) }
+        if let start = sess.startTime { return max(0, Int(sess.accumulated + Date().timeIntervalSince(start))) }
+        return max(0, Int(sess.accumulated))
+    }
+
+    /// Returns the current elapsed seconds for the given kid's room timer, or 0 if none.
+    func currentElapsedSeconds(for kidID: String) -> Int {
+        guard let sess = sessions[kidID] else { return 0 }
+        if sess.isPaused { return max(0, Int(sess.accumulated)) }
+        if let start = sess.startTime { return max(0, Int(sess.accumulated + Date().timeIntervalSince(start))) }
+        return max(0, Int(sess.accumulated))
+    }
+
+    // Keep the published pause state in sync with the active kid's session
+    private func syncPublishedPauseState() {
+        if let kidID = activeKidID, let sess = sessions[kidID] {
+            self.isPaused = sess.isPaused
+        } else {
+            self.isPaused = false
+        }
+        DispatchQueue.main.async { self.objectWillChange.send() }
+    }
 }
 
 struct VisitData: Codable {
