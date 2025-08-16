@@ -6,6 +6,26 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		EF8C22BC2E50A7F300B96052 /* PlaceImageMap.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF8C22B32E50A7F300B96052 /* PlaceImageMap.swift */; };
+		EF8C22BD2E50A7F300B96052 /* PlayfulBackground.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF8C22B42E50A7F300B96052 /* PlayfulBackground.swift */; };
+		EF8C22BE2E50A7F300B96052 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF8C22B72E50A7F300B96052 /* ContentView.swift */; };
+		EF8C22BF2E50A7F300B96052 /* DataController.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF8C22B82E50A7F300B96052 /* DataController.swift */; };
+		EF8C22C02E50A7F300B96052 /* NextIsApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF8C22BA2E50A7F300B96052 /* NextIsApp.swift */; };
+		EF8C22C12E50A7F300B96052 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = EF8C22B62E50A7F300B96052 /* Assets.xcassets */; };
+		EF8C22C42E50A80700B96052 /* Kid.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF8C22C32E50A7FE00B96052 /* Kid.swift */; };
+		EF8C22C62E50A81700B96052 /* VisitData.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF8C22C52E50A81600B96052 /* VisitData.swift */; };
+		EF8C22C92E50A84B00B96052 /* KidsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF8C22C82E50A84B00B96052 /* KidsStore.swift */; };
+		EF8C22CB2E50A85E00B96052 /* VisitLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF8C22CA2E50A85E00B96052 /* VisitLogger.swift */; };
+		EF8C22CD2E50A88A00B96052 /* Utilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF8C22CC2E50A88500B96052 /* Utilities.swift */; };
+		EF8C22CF2E50A89700B96052 /* TabBarDelegateProxy.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF8C22CE2E50A89700B96052 /* TabBarDelegateProxy.swift */; };
+		EF8C22D12E50A8B400B96052 /* PlacesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF8C22D02E50A8B400B96052 /* PlacesView.swift */; };
+		EF8C22D32E50A8E900B96052 /* KidListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF8C22D22E50A8E900B96052 /* KidListView.swift */; };
+		EF8C22D52E50A8F400B96052 /* KidProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF8C22D42E50A8F400B96052 /* KidProfileView.swift */; };
+		EF8C22D72E50A8FE00B96052 /* NotesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF8C22D62E50A8FE00B96052 /* NotesView.swift */; };
+		EF8C22D92E50A90600B96052 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF8C22D82E50A90600B96052 /* SettingsView.swift */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		EFA1FC7F2E4EF84D00F8A473 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -24,17 +44,30 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		EF8C22B32E50A7F300B96052 /* PlaceImageMap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaceImageMap.swift; sourceTree = "<group>"; };
+		EF8C22B42E50A7F300B96052 /* PlayfulBackground.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayfulBackground.swift; sourceTree = "<group>"; };
+		EF8C22B62E50A7F300B96052 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		EF8C22B72E50A7F300B96052 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		EF8C22B82E50A7F300B96052 /* DataController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataController.swift; sourceTree = "<group>"; };
+		EF8C22B92E50A7F300B96052 /* NextIs.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = NextIs.entitlements; sourceTree = "<group>"; };
+		EF8C22BA2E50A7F300B96052 /* NextIsApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NextIsApp.swift; sourceTree = "<group>"; };
+		EF8C22C32E50A7FE00B96052 /* Kid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Kid.swift; sourceTree = "<group>"; };
+		EF8C22C52E50A81600B96052 /* VisitData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisitData.swift; sourceTree = "<group>"; };
+		EF8C22C82E50A84B00B96052 /* KidsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KidsStore.swift; sourceTree = "<group>"; };
+		EF8C22CA2E50A85E00B96052 /* VisitLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisitLogger.swift; sourceTree = "<group>"; };
+		EF8C22CC2E50A88500B96052 /* Utilities.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Utilities.swift; sourceTree = "<group>"; };
+		EF8C22CE2E50A89700B96052 /* TabBarDelegateProxy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabBarDelegateProxy.swift; sourceTree = "<group>"; };
+		EF8C22D02E50A8B400B96052 /* PlacesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlacesView.swift; sourceTree = "<group>"; };
+		EF8C22D22E50A8E900B96052 /* KidListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KidListView.swift; sourceTree = "<group>"; };
+		EF8C22D42E50A8F400B96052 /* KidProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KidProfileView.swift; sourceTree = "<group>"; };
+		EF8C22D62E50A8FE00B96052 /* NotesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesView.swift; sourceTree = "<group>"; };
+		EF8C22D82E50A90600B96052 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		EFA1FC702E4EF84C00F8A473 /* NextIs.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NextIs.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		EFA1FC7E2E4EF84D00F8A473 /* NextIsTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = NextIsTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		EFA1FC882E4EF84D00F8A473 /* NextIsUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = NextIsUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		EFA1FC722E4EF84C00F8A473 /* NextIs */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = NextIs;
-			sourceTree = "<group>";
-		};
 		EFA1FC812E4EF84D00F8A473 /* NextIsTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = NextIsTests;
@@ -72,10 +105,59 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		EF8C22B52E50A7F300B96052 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				EF8C22D82E50A90600B96052 /* SettingsView.swift */,
+				EF8C22D62E50A8FE00B96052 /* NotesView.swift */,
+				EF8C22D42E50A8F400B96052 /* KidProfileView.swift */,
+				EF8C22D22E50A8E900B96052 /* KidListView.swift */,
+				EF8C22B42E50A7F300B96052 /* PlayfulBackground.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		EF8C22BB2E50A7F300B96052 /* NextIs */ = {
+			isa = PBXGroup;
+			children = (
+				EF8C22CE2E50A89700B96052 /* TabBarDelegateProxy.swift */,
+				EF8C22CC2E50A88500B96052 /* Utilities.swift */,
+				EF8C22C72E50A83100B96052 /* Main */,
+				EF8C22C22E50A7F800B96052 /* Models */,
+				EF8C22B52E50A7F300B96052 /* Views */,
+				EF8C22B62E50A7F300B96052 /* Assets.xcassets */,
+				EF8C22B92E50A7F300B96052 /* NextIs.entitlements */,
+				EF8C22BA2E50A7F300B96052 /* NextIsApp.swift */,
+			);
+			path = NextIs;
+			sourceTree = "<group>";
+		};
+		EF8C22C22E50A7F800B96052 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				EF8C22B32E50A7F300B96052 /* PlaceImageMap.swift */,
+				EF8C22C52E50A81600B96052 /* VisitData.swift */,
+				EF8C22C32E50A7FE00B96052 /* Kid.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		EF8C22C72E50A83100B96052 /* Main */ = {
+			isa = PBXGroup;
+			children = (
+				EF8C22D02E50A8B400B96052 /* PlacesView.swift */,
+				EF8C22C82E50A84B00B96052 /* KidsStore.swift */,
+				EF8C22B72E50A7F300B96052 /* ContentView.swift */,
+				EF8C22B82E50A7F300B96052 /* DataController.swift */,
+				EF8C22CA2E50A85E00B96052 /* VisitLogger.swift */,
+			);
+			path = Main;
+			sourceTree = "<group>";
+		};
 		EFA1FC672E4EF84C00F8A473 = {
 			isa = PBXGroup;
 			children = (
-				EFA1FC722E4EF84C00F8A473 /* NextIs */,
+				EF8C22BB2E50A7F300B96052 /* NextIs */,
 				EFA1FC812E4EF84D00F8A473 /* NextIsTests */,
 				EFA1FC8B2E4EF84D00F8A473 /* NextIsUITests */,
 				EFA1FC712E4EF84C00F8A473 /* Products */,
@@ -106,9 +188,6 @@
 			buildRules = (
 			);
 			dependencies = (
-			);
-			fileSystemSynchronizedGroups = (
-				EFA1FC722E4EF84C00F8A473 /* NextIs */,
 			);
 			name = NextIs;
 			packageProductDependencies = (
@@ -212,6 +291,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				EF8C22C12E50A7F300B96052 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -236,6 +316,22 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				EF8C22D32E50A8E900B96052 /* KidListView.swift in Sources */,
+				EF8C22BC2E50A7F300B96052 /* PlaceImageMap.swift in Sources */,
+				EF8C22D72E50A8FE00B96052 /* NotesView.swift in Sources */,
+				EF8C22C62E50A81700B96052 /* VisitData.swift in Sources */,
+				EF8C22C92E50A84B00B96052 /* KidsStore.swift in Sources */,
+				EF8C22D12E50A8B400B96052 /* PlacesView.swift in Sources */,
+				EF8C22BD2E50A7F300B96052 /* PlayfulBackground.swift in Sources */,
+				EF8C22C42E50A80700B96052 /* Kid.swift in Sources */,
+				EF8C22BE2E50A7F300B96052 /* ContentView.swift in Sources */,
+				EF8C22D92E50A90600B96052 /* SettingsView.swift in Sources */,
+				EF8C22BF2E50A7F300B96052 /* DataController.swift in Sources */,
+				EF8C22C02E50A7F300B96052 /* NextIsApp.swift in Sources */,
+				EF8C22CD2E50A88A00B96052 /* Utilities.swift in Sources */,
+				EF8C22D52E50A8F400B96052 /* KidProfileView.swift in Sources */,
+				EF8C22CF2E50A89700B96052 /* TabBarDelegateProxy.swift in Sources */,
+				EF8C22CB2E50A85E00B96052 /* VisitLogger.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
