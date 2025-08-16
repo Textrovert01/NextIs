@@ -9,14 +9,14 @@
 import SwiftUI
 
 // MARK: - Place model for sheet(item:)
-private struct Place: Identifiable, Equatable {
+private struct Place: Identifiable, Hashable {
     let id = UUID()
     let name: String
     let imageName: String
 }
 
 
-struct ContentView: View {
+struct PlacesView: View {
     // MARK: - Properties
     
     // Grid layout: 3 columns for the main screen
@@ -54,6 +54,8 @@ struct ContentView: View {
     // Which place the user tapped
     @State private var selectedPlace: Place? = nil
     @State private var navigateToPlace: Bool = false
+    // Navigation stack path for NavigationStack
+    @State private var path: [Place] = []
     // Alert when trying to switch rooms while a session is active
     @State private var showActiveRoomAlert: Bool = false
     @State private var activeRoomNameForAlert: String = ""
@@ -83,25 +85,18 @@ struct ContentView: View {
     // MARK: - Body layout
     
     var body: some View {
-        NavigationView {
+        NavigationStack(path: $path) {
             ZStack {
                 PlayfulBackground()
-                // Navigation push for PlaceScreen
-                NavigationLink(isActive: $navigateToPlace) {
-                    if let p = selectedPlace {
-                        PlaceScreen(place: (name: p.name, imageName: p.imageName))
-                    }
-                } label: { EmptyView() }
-                .hidden()
                 // Scrollable grid of place buttons
                 // When a place is tapped, show the room sheet for that place
                 ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 12) {
                     // Big title at the top
                     Text("PLACES")
                         .font(.system(size: 40, weight: .bold))
                         .padding(.horizontal)
-                    
+
                     LazyVGrid(columns: columns, alignment: .center, spacing: 12) {
                         ForEach(places) { place in
                             Button {
@@ -111,8 +106,7 @@ struct ContentView: View {
                                 if let currentRoom = dc.currentRoomName(for: kidID) {
                                     if currentRoom == place.name {
                                         // Already in this room: just navigate without restarting timer
-                                        self.selectedPlace = place
-                                        self.navigateToPlace = true
+                                        self.path.append(place)
                                     } else {
                                         // Block switching rooms; show alert
                                         self.activeRoomNameForAlert = currentRoom
@@ -121,8 +115,7 @@ struct ContentView: View {
                                 } else {
                                     // No active session for this kid: start and navigate
                                     dc.startRoomVisit(placeName: place.name)
-                                    self.selectedPlace = place
-                                    self.navigateToPlace = true
+                                    self.path.append(place)
                                 }
                             } label: {
                                 VStack(spacing: 8) {
@@ -139,14 +132,15 @@ struct ContentView: View {
                                         .frame(maxWidth: .infinity)
                                 }
                                 .padding(8)
+                                .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                             .disabled({
                                 let dc = DataController.shared
-                                if let kidID = dc.activeKidID, let currentRoom = dc.currentRoomName(for: kidID) {
-                                    return currentRoom != place.name
-                                }
-                                return false
+                                guard let kidID = dc.activeKidID else { return false }
+                                guard let currentRoom = dc.currentRoomName(for: kidID) else { return false }
+                                // Disable other rooms, but keep the CURRENT room tappable
+                                return currentRoom != place.name
                             }())
                             .opacity({
                                 let dc = DataController.shared
@@ -162,19 +156,63 @@ struct ContentView: View {
                     // Removed .sheet(isPresented: $showRoomSheet) from here (was attached to grid)
                 }
             }
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    NavigationLink(destination: KidsManagerView()) {
-                        Label("Kids", systemImage: "person.3")
+                .toolbar {
+                    ToolbarItem(placement: .principal) {
+                        HStack(spacing: 8) {
+                            Text(activeKidName)
+                                .font(.headline)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                                .minimumScaleFactor(0.85)
+                                .layoutPriority(0)
+                            Text("Active")
+                                .fixedSize(horizontal: true, vertical: false)
+                                .layoutPriority(2)
+                                .font(.caption2).bold()
+                                .padding(.vertical, 3)
+                                .padding(.horizontal, 8)
+                                .background(
+                                    Capsule().fill(Color.accentColor.opacity(0.18))
+                                )
+                                .overlay(
+                                    Capsule().stroke(Color.accentColor, lineWidth: 1)
+                                )
+                                .foregroundColor(.accentColor)
+                        }
                     }
                 }
-            }
-                .navigationTitle(activeKidName)
                 .navigationBarTitleDisplayMode(.inline)
                 .alert("Finish current room first", isPresented: $showActiveRoomAlert) {
                     Button("OK", role: .cancel) { }
                 } message: {
                     Text("You're currently in \(activeRoomNameForAlert). Drop the icon on All Done to finish before switching rooms.")
+                }
+            }
+            .navigationDestination(for: Place.self) { p in
+                PlaceScreen(place: (name: p.name, imageName: p.imageName))
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .tabReselected)) { note in
+                if let index = note.userInfo?["index"] as? Int, index == 0 {
+                    path.removeAll() // pop to root of Places
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .navigateToPlace)) { note in
+                guard let placeName = note.userInfo?["placeName"] as? String else { return }
+                guard let target = places.first(where: { $0.name == placeName }) else { return }
+                let dc = DataController.shared
+
+                if let kidID = dc.activeKidID {
+                    if let currentRoom = dc.currentRoomName(for: kidID) {
+                        if currentRoom == placeName {
+                            path.append(target) // already in this room → just navigate
+                        } else {
+                            self.activeRoomNameForAlert = currentRoom
+                            self.showActiveRoomAlert = true
+                        }
+                    } else {
+                        dc.startRoomVisit(placeName: placeName)
+                        path.append(target)
+                    }
                 }
             }
         }
@@ -217,6 +255,8 @@ struct ContentView: View {
         @State private var isOverDrop: Bool = false
         @State private var iconScale: CGFloat = 1.0
         @State private var dropConfirmed: Bool = false
+        // Arrow state for drop guidance
+        @State private var showArrow: Bool = true
         // Live timer state
         @State private var elapsedSeconds: Int = 0
         private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
@@ -271,64 +311,47 @@ struct ContentView: View {
                                             .background(Color.primary.opacity(0.1))
                                             .clipShape(RoundedRectangle(cornerRadius: 8))
                                     }
+                                    .buttonStyle(PlainButtonStyle())
                                 }
+                                .padding()
                             }
 
                             Text(place.name)
                                 .font(.system(size: 34, weight: .bold))
                                 .multilineTextAlignment(.center)
-                               
+
                             Text(format(elapsedSeconds))
                                 .font(.system(size: 22, weight: .semibold))
                                 .foregroundColor(.secondary)
                                 .accessibilityLabel("Elapsed time")
                         }
-
-                        // Draggable place icon
-                        ZStack {
-                            if isIconVisible {
-                                Image(place.imageName)
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(maxWidth: 300, maxHeight: 300)
-                                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                                    .scaleEffect(iconScale)
-                                    .offset(dragOffset)
-                                    .zIndex(1)
-                                // Gesture: handle dragging and dropping of icon
-                                    .gesture(
-                                        DragGesture()
-                                            .onChanged { value in
-                                                // When dragging starts, record start location and update offset
-                                                if iconStartLocation == .zero {
-                                                    iconStartLocation = value.startLocation
-                                                }
-                                                dragOffset = CGSize(width: value.translation.width, height: value.translation.height)
-                                                let currentFrame = iconBaseFrame.offsetBy(dx: dragOffset.width, dy: dragOffset.height)
-                                                let nowOverDrop = currentFrame.intersects(dropFrame)
-                                                // Animate icon scale when over drop area
-                                                if nowOverDrop != isOverDrop {
-                                                    isOverDrop = nowOverDrop
-                                                    withAnimation(.easeInOut(duration: 0.15)) {
-                                                        iconScale = isOverDrop ? 0.5 : 1.0 // "zoom out" (shrink) when over All Done
-                                                    }
-                                                }
-                                            }
-                                            .onEnded { _ in
-                                                // When dragging ends, check if dropped on target
-                                                handleDropAttempt()
-                                            }
-                                    )
-                                    .background(
-                                        GeometryReader { geo in
-                                            Color.clear
-                                                .preference(key: ViewFrameKey.self, value: geo.frame(in: .named(spaceName)))
-                                        }
-                                    )
-                                    .onPreferenceChange(ViewFrameKey.self) { value in
-                                        iconBaseFrame = value
-                                    }
+                        
+                        
+                        
+                        
+                        // Draggable place icon placeholder (real image is drawn in an overlay so it stays on top of everything)
+                        Rectangle()
+                            .fill(Color.clear)
+                            .frame(maxWidth: 150, maxHeight: 150)
+                            .background(
+                                GeometryReader { geo in
+                                    Color.clear
+                                        .preference(key: ViewFrameKey.self, value: geo.frame(in: .named(spaceName)))
+                                }
+                            )
+                            
+                            .onPreferenceChange(ViewFrameKey.self) { value in
+                                iconBaseFrame = value
+                                    
                             }
+
+                        // Down arrow appears above All Done until drop is completed
+                        if showArrow {
+                            Image(systemName: "arrow.down")
+                                .font(.system(size: 20, weight: .black))
+                                .foregroundColor(.black)
+                                .transition(.opacity)
+                                .padding(.top, 30)
                         }
                         // Drop target: All Done
                         Image("AllDone")
@@ -353,6 +376,45 @@ struct ContentView: View {
                             .transition(.opacity)
                     }
                     .padding(20)
+                    .overlay(
+                        Group {
+                            if isIconVisible {
+                                Image(place.imageName)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(maxWidth: 200, maxHeight: 200)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                                    .scaleEffect(iconScale)
+                                    .padding(.top)
+                                    // Absolute positioning so the icon can be dragged anywhere and remain visually on top
+                                    .position(x: iconBaseFrame.midX + dragOffset.width,
+                                              y: iconBaseFrame.midY + dragOffset.height)
+                                    // High-priority gesture so it wins over other gestures beneath
+                                    .highPriorityGesture(
+                                        DragGesture()
+                                            .onChanged { value in
+                                                if iconStartLocation == .zero {
+                                                    iconStartLocation = value.startLocation
+                                                }
+                                                dragOffset = CGSize(width: value.translation.width, height: value.translation.height)
+                                                let currentFrame = iconBaseFrame.offsetBy(dx: dragOffset.width, dy: dragOffset.height)
+                                                let nowOverDrop = currentFrame.intersects(dropFrame)
+                                                if nowOverDrop != isOverDrop {
+                                                    isOverDrop = nowOverDrop
+                                                    withAnimation(.easeInOut(duration: 0.15)) {
+                                                        iconScale = isOverDrop ? 0.5 : 1.0
+                                                    }
+                                                }
+                                            }
+                                            .onEnded { _ in
+                                                handleDropAttempt()
+                                            }
+                                    )
+                                    // Ensure this layer stays above all other content in this view
+                                    .zIndex(1000)
+                            }
+                        }
+                    )
 
                     // Next Is appears only after successful drop and zoom
                     if showNextIs {
@@ -404,6 +466,8 @@ struct ContentView: View {
         // Check if the icon was dropped on All Done and run animations accordingly
         private func handleDropAttempt() {
             if isOverDrop {
+                // Hide the arrow with animation
+                withAnimation(.easeInOut(duration: 0.2)) { showArrow = false }
                 // Capture final time before ending visit so UI can display the frozen total
                 elapsedSeconds = DataController.shared.currentElapsedSeconds()
                 DataController.shared.endRoomVisit()
@@ -443,6 +507,92 @@ struct ContentView: View {
 
 #Preview {
     ContentView()
+}
+
+
+struct ContentView: View {
+    @State private var selectedTab: Int = 0
+
+    var body: some View {
+        TabView(selection: $selectedTab) {
+            PlacesView()
+                .tabItem { Label("Places", systemImage: "square.grid.3x3.fill") }
+                .tag(0)
+
+            KidsManagerView()
+                .tabItem { Label("Kids", systemImage: "person.3.fill") }
+                .tag(1)
+
+            SettingsView()
+                .tabItem { Label("Settings", systemImage: "gearshape.fill") }
+                .tag(2)
+        }
+        .background(TabBarIntrospector())
+        .onReceive(NotificationCenter.default.publisher(for: .tabReselected)) { note in
+            guard let index = note.userInfo?["index"] as? Int else { return }
+            // 1) Switch to the tapped tab immediately
+            selectedTab = index
+        }
+    }
+}
+
+struct SettingsView: View {
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                PlayfulBackground()
+                VStack(spacing: 16) {
+                    Text("Settings")
+                        .font(.title)
+                        .bold()
+                    Text("Configure the app here.")
+                        .foregroundColor(.secondary)
+                }
+                .padding()
+            }
+            .navigationTitle("Settings")
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarBackButtonHidden(true)
+            
+        }
+    }
+}
+
+
+// MARK: - Tab bar reselection bridge and notification helper
+
+extension Notification.Name {
+    static let tabReselected = Notification.Name("TabReselectedNotification")
+}
+extension Notification.Name {
+    static let navigateToPlace = Notification.Name("NavigateToPlaceNotification")
+}
+private final class TabBarDelegateProxy: NSObject, UITabBarControllerDelegate {
+    static let shared = TabBarDelegateProxy()
+    func tabBarController(_ tabBarController: UITabBarController, didSelect viewController: UIViewController) {
+        let index = tabBarController.viewControllers?.firstIndex(of: viewController) ?? 0
+        NotificationCenter.default.post(name: .tabReselected, object: nil, userInfo: ["index": index])
+    }
+}
+
+private struct TabBarIntrospector: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> UIViewController { ProxyVC() }
+    func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
+
+    private final class ProxyVC: UIViewController {
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            // Walk up the parent chain to find the UITabBarController and set delegate
+            var parentResponder: UIResponder? = self
+            while let responder = parentResponder {
+                if let tbc = responder as? UITabBarController {
+                    tbc.delegate = TabBarDelegateProxy.shared
+                    break
+                }
+                parentResponder = responder.next
+            }
+        }
+    }
 }
 
 
@@ -661,6 +811,8 @@ struct KidsManagerView: View {
     @State private var renameText: String = ""
     @State private var showAddPrompt: Bool = false
     @Environment(\.dismiss) private var dismiss
+    @State private var showKidSwitchAlert: Bool = false
+    @State private var blockingKidName: String = ""
     
     private var activeKidName: String {
         if let id = UUID(uuidString: currentKidID), let kid = store.kids.first(where: { $0.id == id }) {
@@ -681,124 +833,132 @@ struct KidsManagerView: View {
     }
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ZStack {
                 PlayfulBackground()
-                VStack(spacing: 12) {
-                // Active kid indicator (only one active at a time)
-                if !store.kids.isEmpty {
-                    HStack {
-                        Text("Active Kid:")
-                            .font(.headline)
-                        Text(activeKidName)
-                            .font(.headline)
-                            .foregroundColor(.primary)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color.primary.opacity(0.08))
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                        Spacer()
-                    }
-                    .padding(.horizontal)
-                    .padding(.top, 6)
-                }
-Spacer()
-                // Empty state message
-                if store.kids.isEmpty {
-                    VStack(spacing: 8) {
-                        Text("No kids yet")
-                            .font(.headline)
-                        Text("Add a Kid to get started")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
+                
+                VStack {
+                    Text("KIDS")
+                        .font(.system(size: 40, weight: .bold))
+                        .padding(.top, 8)
+                        .padding(.horizontal)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    
                         
-                    }
-                }
-
-                // Kids list (only show when there are kids)
-                if !store.kids.isEmpty {
-                    List {
-                        Section(footer: Text("Tap a kid to view places visited.").font(.footnote)) {
-                            ForEach(store.kids) { kid in
-                                NavigationLink(destination: KidProfileView(kid: kid)) {
-                                    HStack {
-                                        if let room = DataController.shared.currentRoomName(for: kid.id.uuidString), let img = placeImageMap[room], !img.isEmpty {
-                                            Image(img)
-                                                .resizable()
-                                                .scaledToFit()
-                                                .frame(width: 22, height: 22)
-                                                .clipShape(RoundedRectangle(cornerRadius: 4))
-                                        } else {
-                                            Image(systemName: "house.fill")
-                                                .imageScale(.medium)
-                                        }
-                                        Text(kid.name)
-                                            .frame(maxWidth: .infinity, alignment: .leading)
-                                        if let room = DataController.shared.currentRoomName(for: kid.id.uuidString) {
-                                            TimelineView(.periodic(from: .now, by: 1)) { _ in
-                                                let secs = DataController.shared.currentElapsedSeconds(for: kid.id.uuidString)
-                                                HStack(spacing: 6) {
-                                                    Image(systemName: "clock")
-                                                        .imageScale(.small)
-                                                    Text("\(room) · \(format(secs))")
-                                                        .font(.subheadline)
-                                                        .foregroundColor(.secondary)
-                                                        .lineLimit(1)
+                    VStack(spacing: 12) {
+                        // Active kid indicator (only one active at a time)
+                        
+                        // Empty state message
+                        if store.kids.isEmpty {
+                            VStack(spacing: 8) {
+                                Text("No kids yet")
+                                    .font(.headline)
+                                Text("Add a Kid to get started")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                
+                            }
+                        }
+                        
+                        // Kids list (only show when there are kids)
+                        if !store.kids.isEmpty {
+                            List {
+                                Section(footer: Text("Tap a kid to view places visited.").font(.footnote)) {
+                                    ForEach(store.kids) { kid in
+                                        HStack(spacing: 12) {
+                                            // Circle selector — sets the active kid without navigating
+                                            Button {
+                                                setActiveKid(kid)
+                                            } label: {
+                                                ZStack {
+                                                    Circle()
+                                                        .stroke((currentKidID == kid.id.uuidString) ? Color.accentColor : .secondary, lineWidth: 2)
+                                                        .frame(width: 22, height: 22)
+                                                    if currentKidID == kid.id.uuidString {
+                                                        Circle()
+                                                            .frame(width: 10, height: 10)
+                                                    }
                                                 }
-                                                .accessibilityLabel("\(room), elapsed \(format(secs))")
+                                                .contentShape(Circle())
+                                            }
+                                            .buttonStyle(.plain)
+                                            .accessibilityLabel((currentKidID == kid.id.uuidString) ? "Active kid" : "Set active kid")
+
+                                            // Everything else navigates
+                                            NavigationLink(destination: KidProfileView(kid: kid)) {
+                                                HStack {
+                                                    Text(kid.name)
+                                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                                        .lineLimit(1)
+                                                        .truncationMode(.tail)
+                                                    TimelineView(.periodic(from: .now, by: 1)) { _ in
+                                                        let roomName = DataController.shared.currentRoomName(for: kid.id.uuidString) ?? ""
+                                                        let secs = DataController.shared.currentElapsedSeconds(for: kid.id.uuidString)
+                                                        Text("\(roomName.isEmpty ? "—" : roomName) · \(format(secs))")
+                                                            .font(.subheadline)
+                                                            .foregroundColor(.secondary)
+                                                            .lineLimit(1)
+                                                            .truncationMode(.tail)
+                                                            .layoutPriority(1)
+                                                            .accessibilityLabel(roomName.isEmpty
+                                                                ? "No room, elapsed \(format(secs))"
+                                                                : "\(roomName), elapsed \(format(secs))")
+                                                    }
+                                                }
+                                                .contentShape(Rectangle())
+                                            }
+                                            .buttonStyle(.plain)
+                                        }
+                                        .padding(.vertical, 6)
+                                        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                                        .contextMenu {
+                                            Button("Rename") {
+                                                kidBeingRenamed = kid
+                                                renameText = kid.name
+                                            }
+                                        }
+                                        if kidBeingRenamed == kid {
+                                            HStack {
+                                                Spacer(minLength: 24)
+                                                TextField("Name", text: $renameText)
+                                                    .textFieldStyle(.roundedBorder)
+                                                Button("Save") {
+                                                    store.rename(kid: kid, to: renameText)
+                                                    kidBeingRenamed = nil
+                                                }
                                             }
                                         }
                                     }
-                                }
-                                .contextMenu {
-                                    Button("Rename") {
-                                        kidBeingRenamed = kid
-                                        renameText = kid.name
-                                    }
-                                }
-                                if kidBeingRenamed == kid {
-                                    HStack {
-                                        Spacer(minLength: 24)
-                                        TextField("Name", text: $renameText)
-                                            .textFieldStyle(.roundedBorder)
-                                        Button("Save") {
-                                            store.rename(kid: kid, to: renameText)
-                                            kidBeingRenamed = nil
-                                        }
+                                    .onDelete { offsets in
+                                        var id = currentKidID
+                                        store.deleteKids(at: offsets, currentKidID: &id)
+                                        currentKidID = id
                                     }
                                 }
                             }
-                            .onDelete { offsets in
-                                var id = currentKidID
-                                store.deleteKids(at: offsets, currentKidID: &id)
-                                currentKidID = id
-                            }
+                            .scrollContentBackground(.hidden)
+                            .background(Color.clear)
+                            .listStyle(.insetGrouped)
                         }
+                        Spacer()
+                        HStack(spacing: 10) {
+                            TextField("Add kid name", text: $newKidName)
+                                .textFieldStyle(.roundedBorder)
+                                .submitLabel(.done)
+                                .onSubmit { addKid() }
+                            Button {
+                                addKid()
+                            } label: {
+                                Image(systemName: "plus.circle.fill")
+                                    .imageScale(.large)
+                            }
+                            
+                            .accessibilityLabel("Add kid")
+                        }
+                        .padding()
+                        
                     }
-                    .scrollContentBackground(.hidden)
-                    .background(Color.clear)
-                    .listStyle(.insetGrouped)
                 }
-                    Spacer()
-                    HStack(spacing: 10) {
-                        TextField("Add kid name", text: $newKidName)
-                            .textFieldStyle(.roundedBorder)
-                            .submitLabel(.done)
-                            .onSubmit { addKid() }
-                        Button {
-                            addKid()
-                        } label: {
-                            Image(systemName: "plus.circle.fill")
-                                .imageScale(.large)
-                        }
-                  
-                        .accessibilityLabel("Add kid")
-                    }
-                    .padding(.horizontal)
-                    .padding(.vertical, 10)
-                    .background(.ultraThinMaterial)
-            }
-                .navigationTitle("Kids")
                 .alert("Add Kid", isPresented: $showAddPrompt) {
                     TextField("Name", text: $newKidName)
                     Button("Cancel", role: .cancel) { }
@@ -808,6 +968,7 @@ Spacer()
         }
         // No longer need timer for live row updates thanks to TimelineView
         .navigationBarBackButtonHidden(true)
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
                 Button(action: { dismiss() }) {
@@ -816,6 +977,11 @@ Spacer()
                     }
                 }
             }
+        }
+        .alert("Finish current room first", isPresented: $showKidSwitchAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("You're currently with \(blockingKidName). Please finish up before switching.")
         }
         .onAppear {
             if DataController.shared.activeKidID == nil,
@@ -826,6 +992,30 @@ Spacer()
         }
     }
     
+    private func setActiveKid(_ kid: Kid) {
+        let dc = DataController.shared
+        // If someone is in a room and it's not the tapped kid, block the switch
+        if let activeID = dc.activeKidID,
+           let currentRoom = dc.currentRoomName(for: activeID),
+           activeID != kid.id.uuidString,
+           !currentRoom.isEmpty {
+            // Resolve the blocking kid's name for the alert
+            if let uuid = UUID(uuidString: activeID),
+               let blockingKid = store.kids.first(where: { $0.id == uuid }) {
+                blockingKidName = blockingKid.name
+            } else {
+                blockingKidName = "the current kid"
+            }
+            showKidSwitchAlert = true
+            return
+        }
+        // Otherwise safe to activate this kid
+        currentKidID = kid.id.uuidString
+        dc.activateKid(kid)
+        // Navigate to Places tab immediately
+        NotificationCenter.default.post(name: .tabReselected, object: nil, userInfo: ["index": 0])
+    }
+
     private func addKid() {
         store.addKid(named: newKidName)
         // If no active kid yet, activate the one we just added
@@ -875,61 +1065,177 @@ struct KidProfileView: View {
     var body: some View {
         ZStack {
             PlayfulBackground()
-            Group {
-                if todaysVisits.isEmpty {
-                    VStack(spacing: 12) {
-                        Text("No visits yet today")
-                            .font(.headline)
-                        Text("When a room session ends, it will show up here.")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    List {
-                        Section(header: Text("Today's Places")) {
-                            let sorted = todaysVisits.sorted { lhs, rhs in
-                                if lhs.value.count == rhs.value.count {
-                                    return lhs.key < rhs.key
-                                }
-                                return lhs.value.count > rhs.value.count
+            VStack(spacing: 8) {
+                // Live room + timer for this kid (only visible if actually in a room)
+                TimelineView(.periodic(from: .now, by: 1)) { _ in
+                    let roomName = DataController.shared.currentRoomName(for: kid.id.uuidString) ?? ""
+                    let secs = DataController.shared.currentElapsedSeconds(for: kid.id.uuidString)
+                    if !roomName.isEmpty {
+                        Button {
+                            // Switch to Places tab
+                            NotificationCenter.default.post(
+                                name: .tabReselected,
+                                object: nil,
+                                userInfo: ["index": 0]
+                            )
+                            // Then tell PlacesView which room to open
+                            DispatchQueue.main.async {
+                                NotificationCenter.default.post(
+                                    name: .navigateToPlace,
+                                    object: nil,
+                                    userInfo: ["placeName": roomName]
+                                )
                             }
-                            ForEach(sorted, id: \.key) { (place, data) in
-                                let minutes = Int(data.totalTime / 60)
-                                HStack(spacing: 12) {
-                                    Image(placeImageMap[place] ?? "")
+                        } label: {
+                            HStack(alignment: .firstTextBaseline) {
+                                if let imgName = placeImageMap[roomName] {
+                                    Image(imgName)
                                         .resizable()
                                         .scaledToFit()
-                                        .frame(width: 32, height: 32)
-                                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                                    VStack(alignment: .leading) {
-                                        Text(place)
-                                        Text("\(data.count) visits · \(minutes) min")
-                                            .font(.footnote)
-                                            .foregroundColor(.secondary)
+                                        .frame(width: 50, height: 50)
+                                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                                        .alignmentGuide(.firstTextBaseline) { d in d[VerticalAlignment.center] }
+                                }
+                                Text("Now in: \(roomName)")
+                                    .font(.headline)
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
+                                Spacer()
+                                Text(format(secs))
+                                    .font(.headline)
+                                    .monospacedDigit()
+                                    .foregroundColor(.secondary)
+                                    .accessibilityLabel("Elapsed time")
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .padding(12)
+                        .background(.ultraThinMaterial)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .padding(.horizontal)
+                        .padding(.top, 8)
+                    }
+                }
+
+                Group {
+                    if todaysVisits.isEmpty && (DataController.shared.currentRoomName(for: kid.id.uuidString) ?? "").isEmpty {
+                        VStack(spacing: 12) {
+                            Text("No visits yet today")
+                                .font(.headline)
+                            Text("When a room session ends, it will show up here.")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        List {
+                            Section(header: Text("Today's Places")) {
+                                let sorted = todaysVisits.sorted { lhs, rhs in
+                                    if lhs.value.count == rhs.value.count {
+                                        return lhs.key < rhs.key
                                     }
-                                    Spacer()
+                                    return lhs.value.count > rhs.value.count
+                                }
+                                ForEach(sorted, id: \.key) { (place, data) in
+                                    let minutes = Int(data.totalTime / 60)
+                                    NavigationLink {
+                                        NotesView(kidID: kid.id.uuidString, placeName: place)
+                                    } label: {
+                                        HStack(spacing: 12) {
+                                            Image(placeImageMap[place] ?? "")
+                                                .resizable()
+                                                .scaledToFit()
+                                                .frame(width: 32, height: 32)
+                                                .clipShape(RoundedRectangle(cornerRadius: 6))
+                                            VStack(alignment: .leading) {
+                                                Text(place)
+                                                Text("\(data.count) visits · \(minutes) min")
+                                                    .font(.footnote)
+                                                    .foregroundColor(.secondary)
+                                            }
+                                            Spacer()
+                                        }
+                                    }
+                                    .buttonStyle(PlainButtonStyle())
                                 }
                             }
                         }
+                        .scrollContentBackground(.hidden)
+                        .background(Color.clear)
+                        .listStyle(.insetGrouped)
                     }
-                    .scrollContentBackground(.hidden)
-                    .background(Color.clear)
-                    .listStyle(.insetGrouped)
                 }
             }
         }
         .navigationTitle(kid.name)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
-                Button(action: { dismiss() }) {
-                    HStack(spacing: 0) {
-                        Text(" < Back")
-                    }
-                }
+    }
+
+    // Formats seconds as H:MM:SS or MM:SS
+    private func format(_ seconds: Int) -> String {
+        let hrs = seconds / 3600
+        let mins = (seconds % 3600) / 60
+        let secs = seconds % 60
+        if hrs > 0 {
+            return String(format: "%d:%02d:%02d", hrs, mins, secs)
+        } else {
+            return String(format: "%02d:%02d", mins, secs)
+        }
+    }
+}
+
+// NotesView for per-kid, per-place, per-day notes
+struct NotesView: View {
+    let kidID: String
+    let placeName: String
+
+    @State private var notesText: String = ""
+
+    private var todayKey: String {
+        let now = Date()
+        let cal = Calendar.current
+        let comps = cal.dateComponents([.year, .month, .day], from: now)
+        let dateOnly = cal.date(from: comps) ?? now
+        let fmt = DateFormatter()
+        fmt.calendar = cal
+        fmt.timeZone = TimeZone.current
+        fmt.dateFormat = "yyyy-MM-dd"
+        return fmt.string(from: dateOnly)
+    }
+
+    private var storageKey: String { "notes_\(kidID)_\(todayKey)_\(placeName)" }
+
+    var body: some View {
+        ZStack {
+            PlayfulBackground()
+            VStack(spacing: 12) {
+                Text("Notes for \(placeName)")
+                    .font(.title2).bold()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal)
+                Text("Today: \(todayKey)")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal)
+
+                TextEditor(text: $notesText)
+                    .padding(12)
+                    .background(.ultraThinMaterial)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .padding(.horizontal)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
+            .padding(.top)
+        }
+        .navigationTitle("Notes")
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            notesText = UserDefaults.standard.string(forKey: storageKey) ?? ""
+        }
+        .onDisappear {
+            UserDefaults.standard.set(notesText, forKey: storageKey)
         }
     }
 }
@@ -937,8 +1243,16 @@ struct KidProfileView: View {
     
    
 
-// MARK: - DataController
+//
+//  DataController.swift
+//  NextIs
+//
+//  Created by Andy Rodriguez on 8/15/25.
+//
 
+
+// MARK: - DataController
+import Foundation
 import Combine
 
 final class DataController: ObservableObject {
